@@ -12,6 +12,7 @@
   "license": "MIT",
   "description": "Practica 02: TODO API con Node + Docker + Postgres para persistencia",
   "dependencies": {
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "pg": "^8.13.1"
   },

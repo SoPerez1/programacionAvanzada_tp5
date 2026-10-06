@@ -1,27 +1,15 @@
-/**
- * 02 - TODO API con Postgres
- * Nivel: Intermedio
- *
- * Objetivo:
- * - Reemplazar el array en memoria de la practica 01 por persistencia real en Postgres
- * - Levantar Node + Postgres juntos con Docker Compose (dos contenedores, una red)
- * - Usar el driver "pg" con queries parametrizadas (evitar SQL injection)
- * - Comprobar que los datos sobreviven a un restart del contenedor de la API
- *   (mientras no se borre el volumen de Postgres)
- *
- * Requisitos previos: Docker y Docker Compose instalados.
- * Como correr esta practica: ver README.md
- */
+
 
 import express from 'express'
+import cors from 'cors'
 import { pool } from './db.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
+app.use(cors())
 app.use(express.json())
 
-// GET /tasks - Listar todas las tareas (con filtro opcional ?status=pending)
 app.get('/tasks', async (req, res) => {
     try {
         const { status } = req.query
@@ -34,7 +22,6 @@ app.get('/tasks', async (req, res) => {
     }
 })
 
-// GET /tasks/:id - Obtener una tarea por id
 app.get('/tasks/:id', async (req, res) => {
     try {
         const { id } = req.params
@@ -50,20 +37,32 @@ app.get('/tasks/:id', async (req, res) => {
     }
 })
 
-// POST /tasks - Crear una nueva tarea
 app.post('/tasks', async (req, res) => {
     try {
-        const { title, description, status, dueDate } = req.body
+        const { 
+            project_name, activity_type, status, summary, 
+            description, priority, reporter, assignee, 
+            precondition, closed_at, sprint 
+        } = req.body
 
-        if (!title) {
-            return res.status(400).json({ error: 'Title is required' })
+        if (!project_name) {
+            return res.status(400).json({ error: 'project_name is required' })
         }
 
         const result = await pool.query(
-            `INSERT INTO tasks (title, description, status, due_date)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO tasks (
+                project_name, activity_type, status, summary, 
+                description, priority, reporter, assignee, 
+                precondition, closed_at, sprint
+            )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING *`,
-            [title, description || '', status || 'pending', dueDate || null]
+            [
+                project_name, activity_type || null, status || 'Pendiente', 
+                summary || null, description || null, priority || null, 
+                reporter || null, assignee || null, precondition || null, 
+                closed_at || null, sprint || null
+            ]
         )
 
         res.status(201).json(result.rows[0])
@@ -72,31 +71,72 @@ app.post('/tasks', async (req, res) => {
     }
 })
 
-// TODO PUT /tasks/:id - Actualizar una tarea existente
-// Pistas:
-// - Podes usar COALESCE para no pisar los campos que no vengan en el body:
-//     UPDATE tasks
-//     SET title = COALESCE($1, title),
-//         description = COALESCE($2, description),
-//         status = COALESCE($3, status),
-//         due_date = COALESCE($4, due_date),
-//         updated_at = NOW()
-//     WHERE id = $5
-//     RETURNING *
-// - Si "RETURNING *" no devuelve filas, la tarea no existia -> responder 404
+// PUT /tasks/:id - Actualizar una tarea existente
 app.put('/tasks/:id', async (req, res) => {
-    // Tu codigo aca
-    res.status(501).json({ error: 'Not implemented yet' })
+    try {
+        const { id } = req.params
+        let { 
+            project_name, activity_type, status, summary, 
+            description, priority, reporter, assignee, 
+            precondition, closed_at, sprint 
+        } = req.body
+
+        closed_at = closed_at === '' ? null : closed_at;
+        activity_type = activity_type === '' ? null : activity_type;
+        summary = summary === '' ? null : summary;
+        description = description === '' ? null : description;
+        priority = priority === '' ? null : priority;
+        reporter = reporter === '' ? null : reporter;
+        assignee = assignee === '' ? null : assignee;
+        precondition = precondition === '' ? null : precondition;
+        sprint = sprint === '' ? null : sprint;
+
+        const result = await pool.query(
+            `UPDATE tasks
+             SET project_name = COALESCE($1, project_name),
+                 activity_type = $2,
+                 status = COALESCE($3, status),
+                 summary = $4,
+                 description = $5,
+                 priority = $6,
+                 reporter = $7,
+                 assignee = $8,
+                 precondition = $9,
+                 closed_at = $10,
+                 sprint = $11,
+                 updated_at = NOW()
+             WHERE id = $12
+             RETURNING *`,
+            [
+                project_name, activity_type, status, summary, 
+                description, priority, reporter, assignee, 
+                precondition, closed_at, sprint, id
+            ]
+        )
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' })
+        }
+
+        res.json(result.rows[0])
+    } catch (err) {
+        res.status(500).json({ error: err.message })
+    }
 })
 
-// TODO DELETE /tasks/:id - Eliminar una tarea
-// Pistas:
-// - DELETE FROM tasks WHERE id = $1 RETURNING *
-// - Si no devuelve filas, la tarea no existia -> responder 404
-// - Si borra correctamente, responder 204 sin body
 app.delete('/tasks/:id', async (req, res) => {
-    // Tu codigo aca
-    res.status(501).json({ error: 'Not implemented yet' })
+    try {
+        const { id } = req.params
+        const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING *', [id])
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' })
+        }
+
+        res.status(204).send()
+    } catch (err) {
+        res.status(500).json({ error: err.message })
+    }
 })
 
 app.listen(PORT, () => {
